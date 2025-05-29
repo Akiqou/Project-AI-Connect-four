@@ -1,0 +1,287 @@
+import numpy as np
+import math
+import random
+
+# Konstanta permainan
+ROW_COUNT = 6
+COLUMN_COUNT = 7
+
+PLAYER_PIECE = 1
+AI_PIECE = 2
+EMPTY = 0
+
+WINDOW_LENGTH = 4
+
+def create_board():
+    """Membuat papan permainan kosong"""
+    return np.zeros((ROW_COUNT, COLUMN_COUNT))
+
+def drop_piece(board, row, col, piece):
+    """Menempatkan bidak di papan"""
+    board[row][col] = piece
+
+def is_valid_location(board, col):
+    """Memeriksa apakah kolom valid untuk diisi"""
+    return board[ROW_COUNT-1][col] == 0
+
+def get_next_open_row(board, col):
+    """Mendapatkan baris terbuka berikutnya di kolom"""
+    for r in range(ROW_COUNT):
+        if board[r][col] == 0:
+            return r
+
+def print_board(board):
+    """Intruksi Permainan"""
+    print("\n  0  1  2  3  4  5  6")
+    print("  --------------------")
+    print(np.flip(board, 0))
+    print()
+
+def winning_move(board, piece):
+    """Memeriksa apakah ada pemain yang menang"""
+    # Check horizontal
+    for c in range(COLUMN_COUNT-3):
+        for r in range(ROW_COUNT):
+            if board[r][c] == piece and board[r][c+1] == piece and board[r][c+2] == piece and board[r][c+3] == piece:
+                return True
+
+    # Check vertical
+    for c in range(COLUMN_COUNT):
+        for r in range(ROW_COUNT-3):
+            if board[r][c] == piece and board[r+1][c] == piece and board[r+2][c] == piece and board[r+3][c] == piece:
+                return True
+
+    # Check diagonal positif
+    for c in range(COLUMN_COUNT-3):
+        for r in range(ROW_COUNT-3):
+            if board[r][c] == piece and board[r+1][c+1] == piece and board[r+2][c+2] == piece and board[r+3][c+3] == piece:
+                return True
+
+    # Check diagonal negatif
+    for c in range(COLUMN_COUNT-3):
+        for r in range(3, ROW_COUNT):
+            if board[r][c] == piece and board[r-1][c+1] == piece and board[r-2][c+2] == piece and board[r-3][c+3] == piece:
+                return True
+    return False
+
+def evaluate_window(window, piece):
+    """Memberi skor pada segmen papan (window)"""
+    score = 0
+    opp_piece = PLAYER_PIECE if piece == AI_PIECE else AI_PIECE
+
+    if window.count(piece) == 4:
+        score += 100
+    elif window.count(piece) == 3 and window.count(EMPTY) == 1:
+        score += 10
+    elif window.count(piece) == 2 and window.count(EMPTY) == 2:
+        score += 2
+
+    if window.count(opp_piece) == 3 and window.count(EMPTY) == 1:
+        score -= 8  # Prioritas lebih tinggi untuk memblokir player yang hampir menang
+
+    return score
+
+def score_position(board, piece):
+    """Memberi skor keseluruhan posisi papan"""
+    score = 0
+
+    # Skor kolom tengah
+    center_array = [int(i) for i in list(board[:, COLUMN_COUNT//2])]
+    center_count = center_array.count(piece)
+    score += center_count * 4
+
+    # Skor horizontal
+    for r in range(ROW_COUNT):
+        row_array = [int(i) for i in list(board[r,:])]
+        for c in range(COLUMN_COUNT-3):
+            window = row_array[c:c+WINDOW_LENGTH]
+            score += evaluate_window(window, piece)
+
+    # Skor vertical
+    for c in range(COLUMN_COUNT):
+        col_array = [int(i) for i in list(board[:,c])]
+        for r in range(ROW_COUNT-3):
+            window = col_array[r:r+WINDOW_LENGTH]
+            score += evaluate_window(window, piece)
+
+    # Skor diagonal positif
+    for r in range(ROW_COUNT-3):
+        for c in range(COLUMN_COUNT-3):
+            window = [board[r+i][c+i] for i in range(WINDOW_LENGTH)]
+            score += evaluate_window(window, piece)
+
+    # Skor diagonal negatif
+    for r in range(3, ROW_COUNT):
+        for c in range(COLUMN_COUNT-3):
+            window = [board[r-i][c+i] for i in range(WINDOW_LENGTH)]
+            score += evaluate_window(window, piece)
+
+    return score
+
+def is_terminal_node(board):
+    """Memeriksa apakah node terminal (game berakhir)"""
+    return winning_move(board, PLAYER_PIECE) or winning_move(board, AI_PIECE) or len(get_valid_locations(board)) == 0
+
+def get_valid_locations(board):
+    """Mendapatkan semua kolom yang masih bisa diisi"""
+    valid_locations = []
+    for col in range(COLUMN_COUNT):
+        if is_valid_location(board, col):
+            valid_locations.append(col)
+    return valid_locations
+
+def minimax(board, depth, alpha, beta, maximizingPlayer):
+    """Algoritma Minimax dengan Alpha-Beta Pruning"""
+    valid_locations = get_valid_locations(board)
+    is_terminal = is_terminal_node(board)
+    
+    if depth == 0 or is_terminal:
+        if is_terminal:
+            if winning_move(board, AI_PIECE):
+                return (None, 10000000)
+            elif winning_move(board, PLAYER_PIECE):
+                return (None, -10000000)
+            else:
+                return (None, 0)
+        else:
+            return (None, score_position(board, AI_PIECE))
+    
+    if maximizingPlayer:
+        value = -math.inf
+        best_col = random.choice(valid_locations)
+        
+        for col in valid_locations:
+            row = get_next_open_row(board, col)
+            b_copy = board.copy()
+            drop_piece(b_copy, row, col, AI_PIECE)
+            new_score = minimax(b_copy, depth-1, alpha, beta, False)[1]
+            
+            if new_score > value:
+                value = new_score
+                best_col = col
+            alpha = max(alpha, value)
+            if alpha >= beta:
+                break
+                
+        return best_col, value
+    else:
+        value = math.inf
+        best_col = random.choice(valid_locations)
+        
+        for col in valid_locations:
+            row = get_next_open_row(board, col)
+            b_copy = board.copy()
+            drop_piece(b_copy, row, col, PLAYER_PIECE)
+            new_score = minimax(b_copy, depth-1, alpha, beta, True)[1]
+            
+            if new_score < value:
+                value = new_score
+                best_col = col
+            beta = min(beta, value)
+            if alpha >= beta:
+                break
+                
+        return best_col, value
+
+def show_ai_thinking(board):
+    """Menampilkan evaluasi AI untuk setiap langkah yang mungkin"""
+    print("\nEvaluasi AI:")
+    print("Kolom | Nilai")
+    print("------|------")
+    
+    valid_locations = get_valid_locations(board)
+    for col in valid_locations:
+        row = get_next_open_row(board, col)
+        b_copy = board.copy()
+        drop_piece(b_copy, row, col, AI_PIECE)
+        score = score_position(b_copy, AI_PIECE)
+        print(f"{col:5} | {score:5}")
+
+def play_game():
+    """Fungsi utama untuk memainkan game"""
+    while True:
+        board = create_board()
+        print("\n=== CONNECT 4 ===")
+        print("Permainan baru dimulai!")
+        print("Anda adalah Player (1), AI adalah (2)")
+        print("Masukkan angka 0-6 untuk memilih kolom")
+        print("Atau 'r' untuk restart, 'q' untuk quit\n")
+        
+        print_board(board)
+        game_over = False
+        turn = 0  # Player mulai duluan
+        
+        while not game_over:
+            if turn == 0:  # Giliran player
+                while True:
+                    user_input = input("Giliran Player (0-6/r/q): ").lower()
+                    
+                    if user_input == 'q':
+                        print("Terima kasih telah bermain!")
+                        return
+                    elif user_input == 'r':
+                        print("Restarting game...")
+                        game_over = True
+                        break
+                    
+                    try:
+                        col = int(user_input)
+                        if 0 <= col <= 6:
+                            if is_valid_location(board, col):
+                                break
+                            else:
+                                print("Kolom sudah penuh! Pilih kolom lain.")
+                        else:
+                            print("Masukkan angka antara 0-6!")
+                    except ValueError:
+                        print("Input tidak valid! Masukkan angka 0-6, 'r' untuk restart, atau 'q' untuk quit")
+                
+                if user_input == 'r':
+                    break
+                
+                row = get_next_open_row(board, col)
+                drop_piece(board, row, col, PLAYER_PIECE)
+                
+                if winning_move(board, PLAYER_PIECE):
+                    print_board(board)
+                    print("\n=== ANDA MENANG! ===")
+                    game_over = True
+                turn = 1
+            else:  # Giliran AI
+                print("\nAI sedang berpikir...")
+                show_ai_thinking(board)
+                
+                col, minimax_score = minimax(board, 4, -math.inf, math.inf, True)
+                
+                if is_valid_location(board, col):
+                    row = get_next_open_row(board, col)
+                    drop_piece(board, row, col, AI_PIECE)
+                    
+                    if winning_move(board, AI_PIECE):
+                        print_board(board)
+                        print("\n==== AI MENANG! ====")
+                        game_over = True
+                    turn = 0
+            
+            if not game_over:
+                print_board(board)
+                
+                if len(get_valid_locations(board)) == 0:
+                    print("\n==== SERI! ====")
+                    game_over = True
+            
+            if game_over:
+                while True:
+                    choice = input("\nMain lagi? (y/n): ").lower()
+                    if choice == 'y':
+                        game_over = True  # Keluar dari loop game saat ini
+                        break
+                    elif choice == 'n':
+                        print("Terima kasih telah bermain!")
+                        return
+                    else:
+                        print("Masukkan 'y' atau 'n'")
+
+# Mulai permainan
+if __name__ == "__main__":
+    play_game()
